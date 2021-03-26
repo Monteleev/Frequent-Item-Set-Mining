@@ -1,1 +1,1 @@
-# Frequent_Item_Set_Mining
+# Frequent Item Set Mining
