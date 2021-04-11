@@ -4,23 +4,23 @@ import sys
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
-def ReadRatings():
-    my_ratings_df = pd.read_csv('ratings_50users.csv')
+def ReadRatings(file):
+    my_ratings_df = pd.read_csv(file)
     return (my_ratings_df)
 
-def ReadMovies():
-    my_movies_df = pd.read_csv('movies.csv')
+def ReadMovies(file):
+    my_movies_df = pd.read_csv(file)
     return (my_movies_df)
 
-def CreateUserBasket():
-    my_ratings_df = ReadRatings()
+def CreateUserBasket(file):
+    my_ratings_df = ReadRatings(file)
     my_userBaskets = dict((k, frozenset(v.values)) for k, v in my_ratings_df.groupby("userId")["movieId"])
     my_userBaskets_df = pd.DataFrame.from_dict(my_userBaskets,orient='index').transpose()
     my_userBaskets_df.to_csv('my_userBaskets.csv')
     return my_userBaskets
 
-def CreateMovieBasket():
-    my_ratings_df = ReadRatings()
+def CreateMovieBasket(file):
+    my_ratings_df = ReadRatings(file)
     my_movieBaskets = dict((k, frozenset(v.values)) for k, v in my_ratings_df.groupby("movieId")["userId"])
     my_movieBaskets_df = pd.DataFrame.from_dict(my_movieBaskets,orient='index').transpose()
     my_movieBaskets_df.to_csv('my_movieBaskets.csv')
@@ -47,21 +47,21 @@ def getSet(set):
         l.append(lists)
     return l
 
-def ExactCounting(itemBasket,minSupport=5,maxLength=15):
+def ExactCounting(itemBasket,file,maxLength=15):
 
-    all_ratings = ReadRatings()
+    all_ratings = ReadRatings(file)
     all_ratings["counter"] = 1
     counter = all_ratings[["movieId", "counter"]].groupby("movieId").sum()
     counter.sort_values(by=["counter"], ascending=False)
     frequent_itemsets = {}
     frequent_itemsets[1] = dict((frozenset((movie_id,)), row["counter"])
                                     for movie_id, row in counter.iterrows()
-                                    if row["counter"] > minSupport)
-    print("There are {} movies with more than {} favorable reviews".format(len(frequent_itemsets[1]), minSupport))
+                                    if row["counter"] > 1)
+    print("There are {} movies with more than {} favorable reviews".format(len(frequent_itemsets[1]), 1))
     sys.stdout.flush()
     itemsets=[]
     for k in range(2, maxLength+1):
-        cur_frequent_itemsets = find_frequent_itemsets(itemBasket, frequent_itemsets[k-1],minSupport)
+        cur_frequent_itemsets = find_frequent_itemsets(itemBasket, frequent_itemsets[k-1],1)
         if len(cur_frequent_itemsets) == 0:
             print("Did not find any frequent itemsets of length {}".format(k))
             sys.stdout.flush()
@@ -73,8 +73,8 @@ def ExactCounting(itemBasket,minSupport=5,maxLength=15):
         
     return(frequent_itemsets)
 
-def myApriori(itemBasket,minSupport,maxLength=5):
-    all_ratings = ReadRatings()
+def myApriori(itemBasket,minSupport,file,maxLength=5):
+    all_ratings = ReadRatings(file)
     all_ratings["counter"] = 1
     counter = all_ratings[["movieId", "counter"]].groupby("movieId").sum()
     counter.sort_values(by=["counter"], ascending=False)
@@ -109,7 +109,7 @@ def get_user_name(user_id,df):
     title_object = df.loc[df['userId'] == int(user_id)]
     return title_object
 
-def SON():
+def SON(itemBasket,minSupport,maxLength=5,chunksize=100):
     all_ratings = ReadRatings()
     all_ratings["counter"] = 1
     counter = all_ratings[["movieId", "counter"]].groupby("movieId").sum()
@@ -119,29 +119,27 @@ def SON():
                                     for movie_id, row in counter.iterrows()
                                     if row["counter"] > minSupport)
 
+    items = []
+    k_items = []
+    for item in chunks(frequent_itemsets[1], chunksize):
+        items.append(item)
+    k_items.append(items)
+    cur_frequent_itemsets = []
+    foo=[]
     print("There are {} movies with more than {} favorable reviews".format(len(frequent_itemsets[1]), minSupport))
-    sys.stdout.flush()
-    itemsets=[]
-    for k in range(2, maxLength+1):
-        cur_frequent_itemsets = find_frequent_itemsets(itemBasket, frequent_itemsets[k-1],minSupport)
-        if len(cur_frequent_itemsets) == 0:
-            break
-        else:
-            sets = getList(cur_frequent_itemsets)
-            lists = getSet(sets)
-            itemsets.append(lists)
-            sys.stdout.flush()
-            frequent_itemsets[k] = cur_frequent_itemsets
-    freq_set = getList(frequent_itemsets[1])
-    freq_list = getSet(freq_set)
-    freq_sets = [freq_list]+itemsets
-    return(freq_sets)
+    for i in range(2,maxLength+1):
+        for k in range(len(k_items[i-2])):   
+            cur_frequent_itemsets = find_frequent_itemsets(itemBasket,k_items[i-2][k] , minSupport)
+            foo.append(cur_frequent_itemsets)
+            if len(cur_frequent_itemsets) == 0:
+                break
+            else:
+                k_items.append(foo)
+    return(k_items)
 
 def presentResults():
     print("============================================================================================")
     print("(C) Create baskets and dataframes from csv file [format: c , <u(sers) , m(ovies)>, <file>]")
-    print("(L) Load baskets from csv file [format: l , <u(sers , m(ovies)>, <file>]")
-    print("(S) Save baskets to csv file [format: l , <u(sers , m(ovies)>, <file>]")
     print("--------------------------------------------------------------------------------------------")
     print("(A) List ALL frequent itemsets [format: a , < u(sers) , m(ovies) >]")
     print("(B) List BEST (most frequent) itemset(s) [format: b , < u(sers) , m(ovies) >]")
@@ -153,31 +151,49 @@ def presentResults():
     print("(E) EXIT [format: e]")
     print("============================================================================================")
     
-    baskets = CreateUserBasket()
+    userBasket = 0
+    movieBasket = 0
     minSupport = 15
 
     while(True):
         inp = input().split(",")
+        if inp[0] == 'c':
+            file = inp[2]
+            if inp[1] == 'u':
+                userBasket = CreateUserBasket(file)
+            if inp[1] == 'm': 
+                movieBasket = CreateMovieBasket(file)
+                
         if inp[0] == 'a':
-            print(myApriori(baskets,15))
+            file = inp[2]
+            if inp[1] == 'u':
+                print(myApriori(userBasket,35,file))
+            if inp[1] == 'm': 
+                print(myApriori(movieBasket,35,file))
+                
         if inp[0] == 'b':
-            print(myApriori(baskets,15)[-1])
+            file = inp[2]
+            if inp[1] == 'u':
+                print(myApriori(userBasket,35,file)[-1])
+            if inp[1] == 'm': 
+                print(myApriori(movieBasket,35,file)[-1])
         if inp[0] == 'e':
             exit()
         if inp[0] == 'm':
             x=inp[1]
-            print(x)
-            df = ReadMovies()
+            file = inp[2]
+            df = ReadMovies(file)
             ids = get_movie_name(x,df)
             print(ids)
         if inp[0] == 'u':
             x=inp[1]
-            print(x)
-            df = ReadRatings()
+            file = inp[2]
+            df = ReadRatings(file)
             ids = get_user_name(x,df)
             print(ids)
         if inp[0] =='h':
-            all_ratings = ReadRatings()
+            file = inp[1]
+            all_ratings = ReadRatings(file)
             all_ratings["counter"] = 1
             counter = all_ratings[["movieId", "counter"]].groupby("movieId").sum()
             counter.sort_values(by=["counter"], ascending=True)
@@ -188,10 +204,14 @@ def presentResults():
             plt.tight_layout()
             plt.show()
         if inp[0] == 'o':
-            print(ExactCounting(baskets,10))
+            file = inp[2]
+            if inp[1] == 'u':
+                print(ExactCounting(userBasket,35,file))
+            if inp[1] == 'm': 
+                print(ExactCounting(movieBasket,35,file))
         print("----------------------------------------------")
     
 
-xx = CreateUserBasket()
-#presentResults()
-print(myApriori(xx,4)[0])
+#xx = CreateUserBasket()
+presentResults()
+#print(myApriori(xx,4)[0])
