@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import sys
 from collections import defaultdict
 from itertools import islice
@@ -33,8 +32,8 @@ def find_frequent_itemsets(itemBasket, k_1_itemsets, minSupport):
     for user, reviews in itemBasket.items():
         for itemset in k_1_itemsets:
             if itemset.issubset(reviews):
-                for other_reviewed_movie in reviews - itemset:
-                    current_superset = itemset | frozenset((other_reviewed_movie,))
+                for other_movie in reviews - itemset:
+                    current_superset = itemset | frozenset((other_movie,))
                     counts[current_superset] += 1
     return dict([(itemset, frequency) for itemset, frequency in counts.items() if frequency >= minSupport])
 
@@ -89,19 +88,18 @@ def myApriori(itemBasket, minSupport, file, maxLength=5):
     itemsets=[]
     for k in range(2, maxLength+1):
         cur_frequent_itemsets = find_frequent_itemsets(itemBasket, frequent_itemsets[k-1],minSupport)
-        print(cur_frequent_itemsets)
-        print("-------------------------------------------------------------")
         if len(cur_frequent_itemsets) == 0:
             break
         else:
+            print("------")
             sets = getList(cur_frequent_itemsets)
             lists = getSet(sets)
             itemsets.append(lists)
             frequent_itemsets[k] = cur_frequent_itemsets
     freq_set = getList(frequent_itemsets[1])
     freq_list = getSet(freq_set)
-    freq_sets = [freq_list]+itemsets
-    return(freq_sets)
+    frequentItemsets = [freq_list]+itemsets
+    return(frequentItemsets)
 
 def get_movie_name(movie_id,df):
     title_object = df.loc[df['movieId'] == int(movie_id)]
@@ -138,7 +136,6 @@ def SON(itemBasket,minSupport,file,maxLength=5,chunksize=100):
         for k in range(len(k_items[i-2])):   
             cur_frequent_itemsets = find_frequent_itemsets(itemBasket,k_items[i-2][k] , minSupport)
             foo.append(cur_frequent_itemsets)
-            #print(cur_frequent_itemsets)
             if len(cur_frequent_itemsets) == 0:
                 break
             else:
@@ -240,9 +237,14 @@ def presentResults():
         print("----------------------------------------------")
     
 
-#xx = CreateUserBasket()
+xx = CreateUserBasket('data/ratings.csv')
 #presentResults()
-#print(SON(xx,5,2,20))
-#myApriori(xx,15,5)
-#print(ExactCounting(xx,2)[0])
+start = time.time()
+#son = SON(xx, 80, 'data/ratings.csv',3)
+#exact = ExactCounting(xx, 'data/ratings_50users.csv', 2)
+print(myApriori(xx, 60, 'data/ratings.csv', 5))
+end = time.time()
+tim = end - start
+#print(apr)
+print(tim)
 #phase2(xx,20,2,20)
